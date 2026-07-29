@@ -21,11 +21,7 @@ module.exports = {
         type: Sequelize.FLOAT,
         allowNull: false
       },
-      seatbelt: {
-        type: Sequelize.BOOLEAN,
-        allowNull: false
-      },
-      impact: {
+            impact: {
         type: Sequelize.FLOAT,
         allowNull: false
       },

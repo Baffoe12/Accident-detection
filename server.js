@@ -75,15 +75,15 @@ const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-     user: process.env.EMAIL_USER || 'aw3469029@gmail.com',
+     user: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
      pass: process.env.EMAIL_PASS || 'lxdo bbic opae gjlc'
 
   }
 });
 
 const mailOptions = {
-  from: process.env.EMAIL_USER || 'aw3469029@gmail.com',
-  to: process.env.EMERGENCY_CONTACT_EMAIL || 'enninrash419@gmail.com',
+  from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
+  to: process.env.EMERGENCY_CONTACT_EMAIL || 'boadupaakwesi4@gmail.com',
   subject: 'SafeDrive Emergency Alert',
   text: `Critical sensor data detected:\nAlcohol Level: ${data.alcohol}\nImpact: ${data.impact}\nTimestamp: ${data.timestamp}`
 };
@@ -279,17 +279,8 @@ function isValidSensorData(data) {
     console.error('Validation failed: distance is not number:', data.distance);
     return false;
   }
-  if (typeof data.seatbelt !== 'boolean') {
-    console.error('Validation failed: seatbelt is not boolean:', data.seatbelt);
-    return false;
-  }
   if (typeof data.impact !== 'number') {
     console.error('Validation failed: impact is not number:', data.impact);
-    return false;
-  }
-  // pulse is optional, so check only if defined
-  if (data.pulse !== undefined && typeof data.pulse !== 'number') {
-    console.error('Validation failed: pulse is not number:', data.pulse);
     return false;
   }
   if (data.lat !== undefined && typeof data.lat !== 'number') {
@@ -302,26 +293,6 @@ function isValidSensorData(data) {
   }
   if (data.lcd_display !== undefined && typeof data.lcd_display !== 'string') {
     console.error('Validation failed: lcd_display is not string:', data.lcd_display);
-    return false;
-  }
-  if (typeof data.current_pulse !== 'number') {
-    console.error('Validation failed: current_pulse is not number:', data.current_pulse);
-    return false;
-  }
-  if (typeof data.pulse_threshold_min !== 'number') {
-    console.error('Validation failed: pulse_threshold_min is not number:', data.pulse_threshold_min);
-    return false;
-  }
-  if (typeof data.pulse_threshold_max !== 'number') {
-    console.error('Validation failed: pulse_threshold_max is not number:', data.pulse_threshold_max);
-    return false;
-  }
-  if (data.pulse_data !== undefined && !Array.isArray(data.pulse_data)) {
-    console.error('Validation failed: pulse_data is not array:', data.pulse_data);
-    return false;
-  }
-  if (data.pulse_history !== undefined && !isValidNumberArray(data.pulse_history)) {
-    console.error('Validation failed: pulse_history invalid:', data.pulse_history);
     return false;
   }
   if (!isValidNumberArray(data.distance_history)) {
@@ -369,17 +340,8 @@ function isValidAccidentData(data) {
     console.error('Validation failed: distance is not number:', data.distance);
     return false;
   }
-  if (typeof data.seatbelt !== 'boolean') {
-    console.error('Validation failed: seatbelt is not boolean:', data.seatbelt);
-    return false;
-  }
   if (typeof data.impact !== 'number') {
     console.error('Validation failed: impact is not number:', data.impact);
-    return false;
-  }
-  // pulse is optional, so check only if defined
-  if (data.pulse !== undefined && typeof data.pulse !== 'number') {
-    console.error('Validation failed: pulse is not number:', data.pulse);
     return false;
   }
   if (data.lat !== undefined && typeof data.lat !== 'number') {
@@ -432,7 +394,6 @@ app.get('/api/stats', async (req, res) => {
       max_alcohol: accidents.length > 0 ? Math.max(...accidents.map(a => a.alcohol || 0)) : 0,
       avg_alcohol: accidents.length > 0 ? accidents.reduce((sum, a) => sum + (a.alcohol || 0), 0) / accidents.length : 0,
       max_impact: accidents.length > 0 ? Math.max(...accidents.map(a => a.impact || 0)) : 0,
-      seatbelt_violations: accidents.filter(a => a.seatbelt === false).length,
       total_sensor_points: sensors.length
     };
     
@@ -446,7 +407,6 @@ app.get('/api/stats', async (req, res) => {
       max_alcohol: 0.8,
       avg_alcohol: 0.3,
       max_impact: 0.9,
-      seatbelt_violations: 2,
       total_sensor_points: 120
     });
   }
@@ -461,7 +421,7 @@ app.get('/api/sensor', async (req, res) => {
       const latestJson = latest.toJSON();
 
       // Debug log for createdAt and heart_rate values
-      console.log(`Latest sensor data createdAt: ${latestJson.createdAt}, heart_rate: ${latestJson.heart_rate}`);
+      console.log(`Latest sensor data createdAt: ${latestJson.createdAt}`);
 
       // Set headers to prevent caching
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -480,9 +440,7 @@ app.get('/api/sensor', async (req, res) => {
       alcohol: 0.05,
       vibration: 0.2,
       distance: 150,
-      seatbelt: true,
       impact: 0.1,
-      heart_rate: 75,
       lcd_display: 'SYSTEM OK',
       timestamp: new Date().toISOString()
     });
@@ -507,7 +465,6 @@ app.get('/api/map', async (req, res) => {
 
       const summaryParts = [];
       if (e.alcohol > 0.05) summaryParts.push('Alcohol detected');
-      if (e.seatbelt === false) summaryParts.push('Seatbelt not worn');
       if (e.impact > 8) summaryParts.push('Severe impact detected');
       if (e.vibration > 5) summaryParts.push('High vibration');
       if (e.distance < 10) summaryParts.push('Proximity warning');
@@ -555,7 +512,6 @@ app.get('/api/accidents', async (req, res) => {
         alcohol: 0.02,
         vibration: 0.8,
         distance: 20,
-        seatbelt: true,
         impact: 0.9,
         lat: 5.6545,
         lng: -0.1869,
@@ -567,7 +523,6 @@ app.get('/api/accidents', async (req, res) => {
         alcohol: 0.04,
         vibration: 0.7,
         distance: 15,
-        seatbelt: false,
         impact: 0.8,
         lat: 5.6540,
         lng: -0.1875,
@@ -669,9 +624,7 @@ app.get('/api/reports/sensor-excel', async (req, res) => {
       { header: 'Alcohol', key: 'alcohol', width: 10 },
       { header: 'Vibration', key: 'vibration', width: 10 },
       { header: 'Distance', key: 'distance', width: 10 },
-      { header: 'Seatbelt', key: 'seatbelt', width: 10 },
       { header: 'Impact', key: 'impact', width: 10 },
-      { header: 'Pulse', key: 'pulse', width: 10 },
       { header: 'Latitude', key: 'lat', width: 15 },
       { header: 'Longitude', key: 'lng', width: 15 }
     ];
@@ -685,10 +638,8 @@ app.get('/api/reports/sensor-excel', async (req, res) => {
         alcohol: data.alcohol,
         vibration: data.vibration,
         distance: data.distance,
-        seatbelt: data.seatbelt,
-        impact: data.impact,
-        pulse: data.pulse,
-        lat: data.lat,
+            impact: data.impact,
+                lat: data.lat,
         lng: data.lng
       });
     });
@@ -719,8 +670,7 @@ app.get('/api/reports/accident-excel', async (req, res) => {
       { header: 'Alcohol', key: 'alcohol', width: 10 },
       { header: 'Vibration', key: 'vibration', width: 10 },
       { header: 'Distance', key: 'distance', width: 10 },
-      { header: 'Seatbelt', key: 'seatbelt', width: 10 },
-      { header: 'Impact', key: 'impact', width: 10 },
+          { header: 'Impact', key: 'impact', width: 10 },
       { header: 'Latitude', key: 'lat', width: 15 },
       { header: 'Longitude', key: 'lng', width: 15 }
     ];
@@ -733,8 +683,7 @@ app.get('/api/reports/accident-excel', async (req, res) => {
         alcohol: data.alcohol,
         vibration: data.vibration,
         distance: data.distance,
-        seatbelt: data.seatbelt,
-        impact: data.impact,
+            impact: data.impact,
         lat: data.lat,
         lng: data.lng
       });
@@ -762,8 +711,7 @@ app.get('/api/reports/stats-excel', async (req, res) => {
     const maxAlcohol = accidents.length > 0 ? Math.max(...accidents.map(a => a.alcohol || 0)) : 0;
     const avgAlcohol = accidents.length > 0 ? accidents.reduce((sum, a) => sum + (a.alcohol || 0), 0) / accidents.length : 0;
     const maxImpact = accidents.length > 0 ? Math.max(...accidents.map(a => a.impact || 0)) : 0;
-    const seatbeltViolations = accidents.filter(a => a.seatbelt === false).length;
-    const totalSensorPoints = sensors.length;
+        const totalSensorPoints = sensors.length;
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Statistics');
@@ -777,8 +725,7 @@ app.get('/api/reports/stats-excel', async (req, res) => {
     sheet.addRow({ stat: 'Max Alcohol Level', value: maxAlcohol });
     sheet.addRow({ stat: 'Average Alcohol Level', value: avgAlcohol.toFixed(2) });
     sheet.addRow({ stat: 'Max Impact Level', value: maxImpact });
-    sheet.addRow({ stat: 'Seatbelt Violations', value: seatbeltViolations });
-    sheet.addRow({ stat: 'Total Sensor Data Points', value: totalSensorPoints });
+        sheet.addRow({ stat: 'Total Sensor Data Points', value: totalSensorPoints });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="statistics_report.xlsx"');
@@ -805,7 +752,7 @@ app.post('/api/emergency-alert', requireApiKey, (req, res) => {
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-      user: process.env.EMAIL_USER || 'aw3469029@gmail.com',
+      user: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
       pass: process.env.EMAIL_PASS || 'lxdo bbic opae gjlc'
     }
   });
@@ -813,7 +760,7 @@ app.post('/api/emergency-alert', requireApiKey, (req, res) => {
   const recipientEmail = alertData.email || process.env.EMERGENCY_CONTACT_EMAIL || 'emergency_contact@example.com';
 
   const mailOptions = {
-    from: process.env.EMAIL_USER || 'aw3469029@gmail.com',
+    from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
     to: recipientEmail,
     subject: 'SafeDrive Emergency Alert',
     text: `Emergency alert received with the following details:\n${JSON.stringify(alertData, null, 2)}\n\nCoordinates:\nLatitude: ${alertData.latitude}\nLongitude: ${alertData.longitude}\n\nGoogle Maps Link: https://www.google.com/maps/search/?api=1&query=${alertData.latitude},${alertData.longitude}`

@@ -7,7 +7,6 @@ module.exports = (sequelize) => {
     alcohol: { type: DataTypes.FLOAT, allowNull: false },
     vibration: { type: DataTypes.FLOAT, allowNull: false },
     distance: { type: DataTypes.FLOAT, allowNull: false },
-    seatbelt: { type: DataTypes.BOOLEAN, allowNull: false },
     impact: { type: DataTypes.FLOAT, allowNull: false },
     lat: { type: DataTypes.FLOAT },
     lng: { type: DataTypes.FLOAT },

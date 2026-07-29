@@ -8,7 +8,6 @@ module.exports = {
         alcohol: 0.02,
         vibration: 0.9,
         distance: 22.5,
-        seatbelt: true,
         impact: 1.1,
         lcd_display: "Speed: 40km/h",
         lat: 37.7749,
