@@ -11,7 +11,11 @@ const db = {};
 
 let sequelize;
 if (config.use_env_variable) {
-  sequelize = new Sequelize(process.env[config.use_env_variable], config);
+  const envVar = process.env[config.use_env_variable] || process.env.POSTGRES_URI;
+  if (!envVar) {
+    throw new Error(`Environment variable ${config.use_env_variable} or POSTGRES_URI must be set`);
+  }
+  sequelize = new Sequelize(envVar, config);
 } else {
   sequelize = new Sequelize(config.database, config.username, config.password, config);
 }
