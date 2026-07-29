@@ -191,10 +191,11 @@ app.use('/api/sensor', (req, res, next) => {
 
 // Database setup
 let sequelize;
-if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URI;
+if (process.env.NODE_ENV === 'production' && databaseUrl) {
   // Production: Use PostgreSQL
-  console.log('Using PostgreSQL database with URL:', process.env.DATABASE_URL.substring(0, 25) + '...');
-  sequelize = new Sequelize(process.env.DATABASE_URL, {
+  console.log('Using PostgreSQL database with URL:', databaseUrl.substring(0, 25) + '...');
+  sequelize = new Sequelize(databaseUrl, {
     dialect: 'postgres',
     dialectOptions: {
       ssl: {
