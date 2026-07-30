@@ -156,9 +156,9 @@ app.use(cors(corsOptions));
 // Add CORS headers manually to fix missing Access-Control-Allow-Origin
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
+  if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
-  } else {
+  } else if (origin) {
     // Log disallowed origin for debugging
     console.warn(`CORS origin denied: ${origin}`);
   }
@@ -172,6 +172,11 @@ app.use((req, res, next) => {
 
 // Fix: Add OPTIONS preflight handler for all routes to respond with CORS headers
 app.options('*', cors(corsOptions));
+
+// Root health endpoint
+app.get('/', (req, res) => {
+  res.json({ status: 'SafeDrive backend is running' });
+});
 
 /* Removed duplicate bodyParser declaration and usage to fix syntax error */
 
