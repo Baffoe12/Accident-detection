@@ -3,7 +3,18 @@ const express = require('express');
 const cors = require('cors');
 const { Sequelize, Op } = require('sequelize');
 const nodemailer = require('nodemailer');
-const path = require('path');
+
+const emailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
+    pass: process.env.EMAIL_PASS || 'lxdo bbic opae gjlc'
+  }
+});
+
+let lastEmailSentTime = 0;
+const EMAIL_RATE_LIMIT_MS = 60 * 60 * 1000;
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -69,42 +80,26 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
     if (data.alcohol > criticalAlcoholLevel || data.impact > criticalImpactLevel) {
       console.log('Emergency alert triggered due to critical sensor data:', data);
 
-const nodemailer = require('nodemailer');
+      const mailOptions = {
+        from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
+        to: process.env.EMERGENCY_CONTACT_EMAIL || 'boadupaakwesi4@gmail.com',
+        subject: 'SafeDrive Emergency Alert',
+        text: `Critical sensor data detected:\nAlcohol Level: ${data.alcohol}\nImpact: ${data.impact}\nTimestamp: ${data.timestamp}`
+      };
 
-// Configure transporter (use environment variables for real credentials)
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-     user: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-     pass: process.env.EMAIL_PASS || 'lxdo bbic opae gjlc'
-
-  }
-});
-
-const mailOptions = {
-  from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-  to: process.env.EMERGENCY_CONTACT_EMAIL || 'boadupaakwesi4@gmail.com',
-  subject: 'SafeDrive Emergency Alert',
-  text: `Critical sensor data detected:\nAlcohol Level: ${data.alcohol}\nImpact: ${data.impact}\nTimestamp: ${data.timestamp}`
-};
-
-// Implement simple rate limiting for email sending to avoid Gmail limits
-const EMAIL_RATE_LIMIT_MS = 60 * 60 * 1000; // 1 hour
-let lastEmailSentTime = 0;
-
-const now = Date.now();
-if (now - lastEmailSentTime > EMAIL_RATE_LIMIT_MS) {
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.error('Error sending emergency alert email:', error);
-    } else {
-      console.log('Emergency alert email sent:', info.response);
-      lastEmailSentTime = now;
-    }
-  });
-} else {
-  console.log('Email rate limit exceeded, skipping emergency alert email');
-}
+      const now = Date.now();
+      if (now - lastEmailSentTime > EMAIL_RATE_LIMIT_MS) {
+        emailTransporter.sendMail(mailOptions, (error, info) => {
+          if (error) {
+            console.error('Error sending emergency alert email:', error);
+          } else {
+            console.log('Emergency alert email sent:', info.response);
+            lastEmailSentTime = now;
+          }
+        });
+      } else {
+        console.log('Email rate limit exceeded, skipping emergency alert email');
+      }
     }
 
     res.json({ status: 'ok', id: sensorEntry.id });
@@ -570,15 +565,6 @@ app.get('/api/car/position', async (req, res) => {
 /* Removed duplicate declaration of bodyParser and its usage */
 
 // Middleware to validate Content-Type header for JSON POST requests only
-app.use('/api/sensor', (req, res, next) => {
-  if (req.method === 'POST') {
-    const contentType = req.headers['content-type'];
-    if (!contentType || !contentType.includes('application/json')) {
-      return res.status(400).json({ error: 'Content-Type must be application/json' });
-    }
-  }
-  next();
-});
 
 const predictiveAnalyticsService = require('./services/predictiveAnalyticsService');
 
