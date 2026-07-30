@@ -59,6 +59,10 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
 
   const data = req.body;
 
+  if (data.event_type) {
+    delete data.event_type;
+  }
+
   logDataIngestion('Sensor', data);
   if (!isValidSensorData(data)) {
     const errorMsg = 'Invalid sensor data';
@@ -296,19 +300,19 @@ function isValidSensorData(data) {
     console.error('Validation failed: lcd_display is not string:', data.lcd_display);
     return false;
   }
-  if (!isValidNumberArray(data.distance_history)) {
+  if (data.distance_history !== undefined && !isValidNumberArray(data.distance_history)) {
     console.error('Validation failed: distance_history invalid:', data.distance_history);
     return false;
   }
-  if (!isValidNumberArray(data.alcohol_history)) {
+  if (data.alcohol_history !== undefined && !isValidNumberArray(data.alcohol_history)) {
     console.error('Validation failed: alcohol_history invalid:', data.alcohol_history);
     return false;
   }
-  if (!isValidNumberArray(data.impact_history)) {
+  if (data.impact_history !== undefined && !isValidNumberArray(data.impact_history)) {
     console.error('Validation failed: impact_history invalid:', data.impact_history);
     return false;
   }
-  if (!isValidNumberArray(data.vibration_history)) {
+  if (data.vibration_history !== undefined && !isValidNumberArray(data.vibration_history)) {
     console.error('Validation failed: vibration_history invalid:', data.vibration_history);
     return false;
   }
