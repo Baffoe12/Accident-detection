@@ -59,9 +59,6 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
 
   const data = req.body;
 
-  // Set heart_rate field from pulse or current_pulse before saving
-  data.heart_rate = data.pulse || data.current_pulse || 0;
-
   logDataIngestion('Sensor', data);
   if (!isValidSensorData(data)) {
     const errorMsg = 'Invalid sensor data';
@@ -421,30 +418,36 @@ app.get('/api/sensor', async (req, res) => {
     // Try to get latest sensor data from database
     const latest = await SensorDataModel.findOne({ order: [['createdAt', 'DESC']] });
     if (latest) {
-      // Convert to JSON
       const latestJson = latest.toJSON();
-
-      // Debug log for createdAt and heart_rate values
       console.log(`Latest sensor data createdAt: ${latestJson.createdAt}`);
-
-      // Set headers to prevent caching
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
-
       res.json(latestJson);
-    } else {
-      throw new Error('No sensor data found');
+      return;
     }
-  } catch (err) {
-    console.error('Database error in sensor endpoint:', err);
-    // Return mock data if database fails
+
     res.json({
       id: 1,
       alcohol: 0.05,
       vibration: 0.2,
       distance: 150,
       impact: 0.1,
+      lat: 5.6545,
+      lng: -0.1869,
+      lcd_display: 'SYSTEM OK',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Database error in sensor endpoint:', err);
+    res.json({
+      id: 1,
+      alcohol: 0.05,
+      vibration: 0.2,
+      distance: 150,
+      impact: 0.1,
+      lat: 5.6545,
+      lng: -0.1869,
       lcd_display: 'SYSTEM OK',
       timestamp: new Date().toISOString()
     });
