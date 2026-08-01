@@ -2,8 +2,15 @@
 
 module.exports = {
   up: async (queryInterface) => {
-    await queryInterface.removeColumn("sensor_data", "pulse");
-    await queryInterface.removeColumn("sensor_data", "current_pulse");
+    const hasPulse = await queryInterface.columnExists("sensor_data", "pulse");
+    const hasCurrentPulse = await queryInterface.columnExists("sensor_data", "current_pulse");
+
+    if (hasPulse) {
+      await queryInterface.removeColumn("sensor_data", "pulse");
+    }
+    if (hasCurrentPulse) {
+      await queryInterface.removeColumn("sensor_data", "current_pulse");
+    }
   },
 
   down: async (queryInterface) => {
