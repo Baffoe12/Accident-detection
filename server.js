@@ -2,59 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Sequelize, Op } = require('sequelize');
-const nodemailer = require('nodemailer');
-
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const EMAIL_FROM = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com';
-const SMTP_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
-const SMTP_PORT = process.env.EMAIL_PORT ? parseInt(process.env.EMAIL_PORT, 10) : 465;
-const SMTP_SECURE = process.env.EMAIL_SECURE ? process.env.EMAIL_SECURE.toLowerCase() === 'true' : true;
-const SMTP_USER = process.env.EMAIL_USER;
-const SMTP_PASS = process.env.EMAIL_PASS;
-const SMTP_ENABLED = !!SMTP_USER && !!SMTP_PASS;
-const EMAIL_ENABLED = SMTP_ENABLED || !!SENDGRID_API_KEY;
-
-let transporter = null;
-if (SMTP_ENABLED) {
-  const transportOptions = {
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-  };
-
-  if (SMTP_HOST && SMTP_HOST.includes('gmail.com')) {
-    transportOptions.service = 'gmail';
-  } else {
-    transportOptions.host = SMTP_HOST;
-    transportOptions.port = SMTP_PORT;
-    transportOptions.secure = SMTP_SECURE;
-  }
-
-  transporter = nodemailer.createTransport(transportOptions);
-
-  transporter.verify((error) => {
-    if (error) {
-      console.error('Failed to verify SMTP transporter:', error.message);
-      transporter = null;
-    } else {
-      console.log('SMTP transporter verified successfully');
-    }
-  });
-}
-
-let sgMail = null;
-if (!transporter && SENDGRID_API_KEY) {
-  try {
-    sgMail = require('@sendgrid/mail');
-    sgMail.setApiKey(SENDGRID_API_KEY);
-  } catch (err) {
-    console.error('Failed to load @sendgrid/mail:', err.message);
-  }
-}
-
-let lastEmailSentTime = 0;
-const EMAIL_RATE_LIMIT_MS = 60 * 60 * 1000;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -116,25 +63,6 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
   data.timestamp = new Date();
   try {
     const sensorEntry = await SensorDataModel.create(data);
-
-    if (isCriticalSensorData(data)) {
-      console.log('Emergency alert triggered due to critical sensor data:', data);
-      const recipients = process.env.EMERGENCY_CONTACT_EMAIL || '';
-      console.log('Configured emergency email recipients:', recipients || 'not set');
-      await sendEmergencyAlertEmail({
-        device_id: data.device_id,
-        timestamp: new Date().toISOString(),
-        alcohol: data.alcohol,
-        vibration: data.vibration,
-        distance: data.distance,
-        impact: data.impact,
-        lat: data.lat,
-        lng: data.lng,
-        lcd_display: data.lcd_display,
-        pulse: data.pulse,
-        current_pulse: data.current_pulse
-      }, recipients);
-    }
 
     res.json({ status: 'ok', id: sensorEntry.id });
   } catch (err) {
@@ -459,81 +387,6 @@ app.get('/api/stats', async (req, res) => {
 });
 
 
-function isCriticalSensorData(data) {
-  const normalizedAlcoholThreshold = 0.6;
-  const rawMq3AlcoholThreshold = 400; // raw MQ-3 ADC values are 0-1023; low raw values are not critical
-  const criticalImpactLevel = 2.0;
-
-  const alcoholValue = Number(data.alcohol);
-  const alcoholCritical = alcoholValue > 10
-    ? alcoholValue >= rawMq3AlcoholThreshold
-    : alcoholValue > normalizedAlcoholThreshold;
-
-  if (alcoholValue > 10) {
-    console.log(`Interpreting alcohol reading as raw MQ-3 ADC value: ${alcoholValue}, threshold: ${rawMq3AlcoholThreshold}`);
-  }
-
-  return data && (alcoholCritical || data.impact > criticalImpactLevel);
-}
-
-async function sendEmergencyAlertEmail(alertData, recipientCsv) {
-  if (!EMAIL_ENABLED) {
-    console.log('Email alerts disabled: no SMTP or SendGrid transport configured');
-    return;
-  }
-  if (!recipientCsv) {
-    console.log('Email alerts disabled: no emergency recipient email configured');
-    return;
-  }
-
-  const recipients = recipientCsv
-    .split(',')
-    .map(email => email.trim())
-    .filter(Boolean);
-
-  if (recipients.length === 0) {
-    console.log('Email alerts disabled: no valid recipients found');
-    return;
-  }
-
-  const msg = {
-    from: EMAIL_FROM,
-    to: recipients,
-    subject: 'SafeDrive Critical Sensor Alert',
-    text: `Critical sensor alert received:\n${JSON.stringify(alertData, null, 2)}`,
-  };
-
-  try {
-    const now = Date.now();
-    if (now - lastEmailSentTime < EMAIL_RATE_LIMIT_MS) {
-      console.log('Email rate limit exceeded, skipping emergency alert email');
-      return;
-    }
-
-    if (SMTP_ENABLED && transporter) {
-      const info = await transporter.sendMail(msg);
-      console.log('Emergency alert email sent via SMTP:', info.messageId || info.response);
-      emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent via SMTP to ${recipients.join(', ')}: ${info.messageId || info.response}\n`);
-      lastEmailSentTime = now;
-      return;
-    }
-
-    if (SENDGRID_API_KEY && sgMail) {
-      const info = await sgMail.send(msg);
-      console.log('Emergency alert email sent via SendGrid:', info[0].statusCode);
-      emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent via SendGrid to ${recipients.join(', ')}: ${info[0].statusCode}\n`);
-      lastEmailSentTime = now;
-      return;
-    }
-
-    console.log('Email alert skipped: no valid transport available');
-  } catch (error) {
-    console.error('Error sending emergency alert email:', error);
-    emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email to ${recipients.join(', ')}: ${error.message}\n`);
-  }
-}
-
-
 app.get('/api/sensor', async (req, res) => {
   try {
     // Try to get latest sensor data from database
@@ -691,8 +544,6 @@ app.get('/api/car/position', async (req, res) => {
 // Middleware to validate Content-Type header for JSON POST requests only
 
 const predictiveAnalyticsService = require('./services/predictiveAnalyticsService');
-
-const emergencyAlertLog = fs.createWriteStream('emergency_alerts.log', { flags: 'a' });
 
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
@@ -855,23 +706,6 @@ app.get('/api/reports/stats-excel', async (req, res) => {
     console.error('Error generating statistics Excel report:', err);
     res.status(500).json({ error: 'Failed to generate statistics Excel report' });
   }
-});
-
-// Emergency alert ingestion endpoint
-app.post('/api/emergency-alert', requireApiKey, async (req, res) => {
-  const alertData = req.body;
-  if (!alertData || typeof alertData !== 'object') {
-    return res.status(400).json({ error: 'Invalid emergency alert data' });
-  }
-  const logEntry = `[${new Date().toISOString()}] Emergency alert received: ${JSON.stringify(alertData)}\n`;
-  emergencyAlertLog.write(logEntry);
-  console.log(logEntry.trim());
-
-  const finalRecipient = process.env.EMERGENCY_CONTACT_EMAIL || '';
-
-  await sendEmergencyAlertEmail(alertData, finalRecipient);
-
-  res.json({ status: 'ok', message: 'Emergency alert received' });
 });
 
 // Predictive analytics risk score API endpoint
