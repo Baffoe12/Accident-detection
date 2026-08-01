@@ -2,13 +2,42 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Sequelize, Op } = require('sequelize');
+const nodemailer = require('nodemailer');
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com';
-const EMAIL_ENABLED = !!SENDGRID_API_KEY;
+const SMTP_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
+const SMTP_PORT = process.env.EMAIL_PORT ? parseInt(process.env.EMAIL_PORT, 10) : 465;
+const SMTP_SECURE = process.env.EMAIL_SECURE ? process.env.EMAIL_SECURE.toLowerCase() === 'true' : true;
+const SMTP_USER = process.env.EMAIL_USER;
+const SMTP_PASS = process.env.EMAIL_PASS;
+const SMTP_ENABLED = !!SMTP_USER && !!SMTP_PASS;
+const EMAIL_ENABLED = SMTP_ENABLED || !!SENDGRID_API_KEY;
+
+let transporter = null;
+if (SMTP_ENABLED) {
+  transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+  });
+
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error('Failed to verify SMTP transporter:', error.message);
+      transporter = null;
+    } else {
+      console.log('SMTP transporter verified successfully');
+    }
+  });
+}
 
 let sgMail = null;
-if (EMAIL_ENABLED) {
+if (!transporter && SENDGRID_API_KEY) {
   try {
     sgMail = require('@sendgrid/mail');
     sgMail.setApiKey(SENDGRID_API_KEY);
@@ -460,8 +489,8 @@ function isCriticalSensorData(data) {
 }
 
 async function sendEmergencyAlertEmail(alertData, recipientCsv) {
-  if (!EMAIL_ENABLED || !sgMail) {
-    console.log('Email alerts disabled: SENDGRID_API_KEY is not configured');
+  if (!EMAIL_ENABLED) {
+    console.log('Email alerts disabled: no SMTP or SendGrid transport configured');
     return;
   }
   if (!recipientCsv) {
@@ -487,9 +516,21 @@ async function sendEmergencyAlertEmail(alertData, recipientCsv) {
   };
 
   try {
-    const info = await sgMail.send(msg);
-    console.log('Emergency alert email sent:', info[0].statusCode);
-    emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent to ${recipients.join(', ')}: ${info[0].statusCode}\n`);
+    if (SMTP_ENABLED && transporter) {
+      const info = await transporter.sendMail(msg);
+      console.log('Emergency alert email sent via SMTP:', info.messageId || info.response);
+      emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent via SMTP to ${recipients.join(', ')}: ${info.messageId || info.response}\n`);
+      return;
+    }
+
+    if (SENDGRID_API_KEY && sgMail) {
+      const info = await sgMail.send(msg);
+      console.log('Emergency alert email sent via SendGrid:', info[0].statusCode);
+      emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent via SendGrid to ${recipients.join(', ')}: ${info[0].statusCode}\n`);
+      return;
+    }
+
+    console.log('Email alert skipped: no valid transport available');
   } catch (error) {
     console.error('Error sending emergency alert email:', error);
     emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email to ${recipients.join(', ')}: ${error.message}\n`);
