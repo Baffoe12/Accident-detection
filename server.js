@@ -80,27 +80,7 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
 
     if (data.alcohol > criticalAlcoholLevel || data.impact > criticalImpactLevel) {
       console.log('Emergency alert triggered due to critical sensor data:', data);
-
-      const mailOptions = {
-        from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-        to: process.env.EMERGENCY_CONTACT_EMAIL || 'boadupaakwesi4@gmail.com',
-        subject: 'SafeDrive Emergency Alert',
-        text: `Critical sensor data detected:\nAlcohol Level: ${data.alcohol}\nImpact: ${data.impact}\nTimestamp: ${data.timestamp}`
-      };
-
-      const now = Date.now();
-      if (now - lastEmailSentTime > EMAIL_RATE_LIMIT_MS) {
-        emailTransporter.sendMail(mailOptions, (error, info) => {
-          if (error) {
-            console.error('Error sending emergency alert email:', error);
-          } else {
-            console.log('Emergency alert email sent:', info.response);
-            lastEmailSentTime = now;
-          }
-        });
-      } else {
-        console.log('Email rate limit exceeded, skipping emergency alert email');
-      }
+      console.log('Email alerts disabled: Gmail SMTP is not reachable from Render');
     }
 
     res.json({ status: 'ok', id: sensorEntry.id });
