@@ -425,8 +425,13 @@ app.post('/api/settings/emergency-email', requireApiKey, async (req, res) => {
     if (!email || typeof email !== 'string') {
       return res.status(400).json({ error: 'Invalid email address' });
     }
-    await setSetting('emergency_email', email);
-    res.json({ status: 'ok', email });
+    const cleaned = email
+      .split(',')
+      .map(e => e.trim())
+      .filter(e => e.length > 0)
+      .join(',');
+    await setSetting('emergency_email', cleaned);
+    res.json({ status: 'ok', email: cleaned });
   } catch (err) {
     console.error('Database error in emergency email settings endpoint:', err);
     res.status(500).json({ error: 'Database error', details: err.message });
@@ -770,6 +775,7 @@ app.post('/api/emergency-alert', requireApiKey, async (req, res) => {
   const storedEmail = await getSetting('emergency_email');
   const finalRecipient = storedEmail || recipientEmail;
 
+  const recipients = finalRecipient.split(',').map(e => e.trim()).filter(Boolean);
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -778,22 +784,24 @@ app.post('/api/emergency-alert', requireApiKey, async (req, res) => {
     }
   });
 
-  const mailOptions = {
-    from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-    to: finalRecipient,
-    subject: 'SafeDrive Emergency Alert',
-    text: `Emergency alert received with the following details:\n${JSON.stringify(alertData, null, 2)}\n\nCoordinates:\nLatitude: ${alertData.latitude}\nLongitude: ${alertData.longitude}\n\nGoogle Maps Link: https://www.google.com/maps/search/?api=1&query=${alertData.latitude},${alertData.longitude}`
-  };
+  for (const recipient of recipients) {
+    const mailOptions = {
+      from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
+      to: recipient,
+      subject: 'SafeDrive Emergency Alert',
+      text: `Emergency alert received with the following details:\n${JSON.stringify(alertData, null, 2)}\n\nCoordinates:\nLatitude: ${alertData.latitude}\nLongitude: ${alertData.longitude}\n\nGoogle Maps Link: https://www.google.com/maps/search/?api=1&query=${alertData.latitude},${alertData.longitude}`
+    };
 
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.error('Error sending emergency alert email:', error);
-      emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email: ${error}\n`);
-    } else {
-      console.log('Emergency alert email sent:', info.response);
-      emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent: ${info.response}\n`);
-    }
-  });
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error('Error sending emergency alert email:', error);
+        emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email to ${recipient}: ${error}\n`);
+      } else {
+        console.log('Emergency alert email sent:', info.response);
+        emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent to ${recipient}: ${info.response}\n`);
+      }
+    });
+  }
 
   res.json({ status: 'ok', message: 'Emergency alert received' });
 });
