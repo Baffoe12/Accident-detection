@@ -119,9 +119,8 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
 
     if (isCriticalSensorData(data)) {
       console.log('Emergency alert triggered due to critical sensor data:', data);
-      const storedAlertEmail = await getSetting('emergency_email');
-      const recipients = storedAlertEmail || process.env.EMERGENCY_CONTACT_EMAIL || '';
-      console.log('Configured emergency email:', recipients || 'not set');
+      const recipients = process.env.EMERGENCY_CONTACT_EMAIL || '';
+      console.log('Configured emergency email recipients:', recipients || 'not set');
       await sendEmergencyAlertEmail({
         device_id: data.device_id,
         timestamp: new Date().toISOString(),
@@ -257,7 +256,6 @@ if (process.env.NODE_ENV === 'production' && databaseUrl) {
 // Define models
 const SensorDataModel = require('./models/SensorData')(sequelize);
 const AccidentEventModel = require('./models/AccidentEvent')(sequelize);
-const SettingModel = require('./models/Setting')(sequelize);
 
 // Sync models on startup with more detailed logging
 console.log('Starting database sync...');
@@ -268,15 +266,6 @@ sequelize.sync({ force: false }).then(() => {
     console.log('Available tables:', tables);
   }).catch(err => {
     console.error('Error checking tables:', err);
-  });
-
-  // Seed default settings if missing
-  return SettingModel.findByPk('emergency_email').then(setting => {
-    if (!setting) {
-      const defaultEmail = process.env.EMERGENCY_CONTACT_EMAIL || 'boadupaakwesi4@gmail.com';
-      console.log(`Seeding default emergency_email setting: ${defaultEmail}`);
-      return SettingModel.create({ key: 'emergency_email', value: defaultEmail });
-    }
   });
 }).catch(err => {
   console.error('Error syncing database tables:', err);
@@ -469,14 +458,6 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-async function getSetting(key, defaultValue = null) {
-  const setting = await SettingModel.findByPk(key);
-  return setting ? setting.value : defaultValue;
-}
-
-async function setSetting(key, value) {
-  await SettingModel.upsert({ key, value });
-}
 
 function isCriticalSensorData(data) {
   const normalizedAlcoholThreshold = 0.6;
@@ -552,37 +533,6 @@ async function sendEmergencyAlertEmail(alertData, recipientCsv) {
   }
 }
 
-app.get('/api/settings/emergency-email', requireApiKey, async (req, res) => {
-  try {
-    const email = await getSetting('emergency_email', process.env.EMERGENCY_CONTACT_EMAIL || '');
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.json({ email });
-  } catch (err) {
-    console.error('Database error in emergency email settings endpoint:', err);
-    res.status(500).json({ error: 'Database error', details: err.message });
-  }
-});
-
-app.post('/api/settings/emergency-email', requireApiKey, async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email || typeof email !== 'string') {
-      return res.status(400).json({ error: 'Invalid email address' });
-    }
-    const cleaned = email
-      .split(',')
-      .map(e => e.trim())
-      .filter(e => e.length > 0)
-      .join(',');
-    await setSetting('emergency_email', cleaned);
-    res.json({ status: 'ok', email: cleaned });
-  } catch (err) {
-    console.error('Database error in emergency email settings endpoint:', err);
-    res.status(500).json({ error: 'Database error', details: err.message });
-  }
-});
 
 app.get('/api/sensor', async (req, res) => {
   try {
@@ -917,9 +867,7 @@ app.post('/api/emergency-alert', requireApiKey, async (req, res) => {
   emergencyAlertLog.write(logEntry);
   console.log(logEntry.trim());
 
-  const recipientEmail = alertData.email || process.env.EMERGENCY_CONTACT_EMAIL || '';
-  const storedEmail = await getSetting('emergency_email');
-  const finalRecipient = storedEmail || recipientEmail;
+  const finalRecipient = process.env.EMERGENCY_CONTACT_EMAIL || '';
 
   await sendEmergencyAlertEmail(alertData, finalRecipient);
 
