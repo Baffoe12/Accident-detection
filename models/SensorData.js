@@ -8,8 +8,6 @@ module.exports = (sequelize) => {
     vibration: { type: DataTypes.FLOAT, allowNull: false },
     distance: { type: DataTypes.FLOAT, allowNull: false },
     impact: { type: DataTypes.FLOAT, allowNull: false },
-    pulse: { type: DataTypes.FLOAT, allowNull: true },
-    current_pulse: { type: DataTypes.FLOAT, allowNull: true },
     lat: { type: DataTypes.FLOAT },
     lng: { type: DataTypes.FLOAT },
     lcd_display: { type: DataTypes.STRING },
