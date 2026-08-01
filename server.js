@@ -4,13 +4,16 @@ const cors = require('cors');
 const { Sequelize, Op } = require('sequelize');
 const nodemailer = require('nodemailer');
 
-const emailTransporter = nodemailer.createTransport({
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_PASS = process.env.EMAIL_PASS;
+const EMAIL_ENABLED = process.env.EMAIL_ENABLED === 'true' || (!!EMAIL_USER && !!EMAIL_PASS);
+const emailTransporter = EMAIL_ENABLED ? nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-    pass: process.env.EMAIL_PASS || 'lxdo bbic opae gjlc'
+    user: EMAIL_USER,
+    pass: EMAIL_PASS
   }
-});
+}) : null;
 
 let lastEmailSentTime = 0;
 const EMAIL_RATE_LIMIT_MS = 60 * 60 * 1000;
@@ -54,10 +57,12 @@ const logDataIngestion = (type, data) => {
 app.post('/api/sensor', requireApiKey, async (req, res) => {
   console.log('Received /api/sensor POST body:', req.body);
 
-  // Log pulse and current_pulse values from incoming data
-  console.log(`Incoming pulse: ${req.body.pulse}, current_pulse: ${req.body.current_pulse}`);
-
   const data = req.body;
+  const pulse = typeof data.pulse === 'number' ? data.pulse : undefined;
+  const currentPulse = typeof data.current_pulse === 'number' ? data.current_pulse : undefined;
+  if (pulse !== undefined || currentPulse !== undefined) {
+    console.log(`Incoming pulse: ${pulse}, current_pulse: ${currentPulse}`);
+  }
 
   if (data.event_type) {
     delete data.event_type;
@@ -74,15 +79,24 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
   try {
     const sensorEntry = await SensorDataModel.create(data);
 
-    // Check for critical thresholds to trigger emergency alert
-    const criticalAlcoholLevel = 0.6; // example threshold
-    const criticalImpactLevel = 2.0;  // example threshold
-
-    if (data.alcohol > criticalAlcoholLevel || data.impact > criticalImpactLevel) {
+    if (isCriticalSensorData(data)) {
       console.log('Emergency alert triggered due to critical sensor data:', data);
       const storedAlertEmail = await getSetting('emergency_email');
-      console.log('Configured emergency email:', storedAlertEmail || 'not set');
-      console.log('Email alerts disabled: Gmail SMTP is not reachable from Render');
+      const recipients = storedAlertEmail || process.env.EMERGENCY_CONTACT_EMAIL || '';
+      console.log('Configured emergency email:', recipients || 'not set');
+      await sendEmergencyAlertEmail({
+        device_id: data.device_id,
+        timestamp: new Date().toISOString(),
+        alcohol: data.alcohol,
+        vibration: data.vibration,
+        distance: data.distance,
+        impact: data.impact,
+        lat: data.lat,
+        lng: data.lng,
+        lcd_display: data.lcd_display,
+        pulse: data.pulse,
+        current_pulse: data.current_pulse
+      }, recipients);
     }
 
     res.json({ status: 'ok', id: sensorEntry.id });
@@ -292,6 +306,14 @@ function isValidSensorData(data) {
     console.error('Validation failed: lcd_display is not string:', data.lcd_display);
     return false;
   }
+  if (data.pulse !== undefined && typeof data.pulse !== 'number') {
+    console.error('Validation failed: pulse is not number:', data.pulse);
+    return false;
+  }
+  if (data.current_pulse !== undefined && typeof data.current_pulse !== 'number') {
+    console.error('Validation failed: current_pulse is not number:', data.current_pulse);
+    return false;
+  }
   if (data.distance_history !== undefined && !isValidNumberArray(data.distance_history)) {
     console.error('Validation failed: distance_history invalid:', data.distance_history);
     return false;
@@ -416,6 +438,60 @@ async function getSetting(key, defaultValue = null) {
 
 async function setSetting(key, value) {
   await SettingModel.upsert({ key, value });
+}
+
+function isCriticalSensorData(data) {
+  const normalizedAlcoholThreshold = 0.6;
+  const rawMq3AlcoholThreshold = 400; // raw MQ-3 ADC values are 0-1023; low raw values are not critical
+  const criticalImpactLevel = 2.0;
+
+  const alcoholValue = Number(data.alcohol);
+  const alcoholCritical = alcoholValue > 10
+    ? alcoholValue >= rawMq3AlcoholThreshold
+    : alcoholValue > normalizedAlcoholThreshold;
+
+  if (alcoholValue > 10) {
+    console.log(`Interpreting alcohol reading as raw MQ-3 ADC value: ${alcoholValue}, threshold: ${rawMq3AlcoholThreshold}`);
+  }
+
+  return data && (alcoholCritical || data.impact > criticalImpactLevel);
+}
+
+async function sendEmergencyAlertEmail(alertData, recipientCsv) {
+  if (!EMAIL_ENABLED) {
+    console.log('Email alerts disabled: SMTP credentials not configured or EMAIL_ENABLED is false');
+    return;
+  }
+  if (!recipientCsv) {
+    console.log('Email alerts disabled: no emergency recipient email configured');
+    return;
+  }
+
+  const recipients = recipientCsv
+    .split(',')
+    .map(email => email.trim())
+    .filter(Boolean);
+
+  if (recipients.length === 0) {
+    console.log('Email alerts disabled: no valid recipients found');
+    return;
+  }
+
+  const mailOptions = {
+    from: EMAIL_USER,
+    to: recipients,
+    subject: 'SafeDrive Critical Sensor Alert',
+    text: `Critical sensor alert received:\n${JSON.stringify(alertData, null, 2)}`
+  };
+
+  try {
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log('Emergency alert email sent:', info.response);
+    emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent to ${recipients.join(', ')}: ${info.response}\n`);
+  } catch (error) {
+    console.error('Error sending emergency alert email:', error);
+    emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email to ${recipients.join(', ')}: ${error}\n`);
+  }
 }
 
 app.get('/api/settings/emergency-email', requireApiKey, async (req, res) => {
@@ -780,37 +856,11 @@ app.post('/api/emergency-alert', requireApiKey, async (req, res) => {
   emergencyAlertLog.write(logEntry);
   console.log(logEntry.trim());
 
-  const recipientEmail = alertData.email || process.env.EMERGENCY_CONTACT_EMAIL || 'emergency_contact@example.com';
+  const recipientEmail = alertData.email || process.env.EMERGENCY_CONTACT_EMAIL || '';
   const storedEmail = await getSetting('emergency_email');
   const finalRecipient = storedEmail || recipientEmail;
 
-  const recipients = finalRecipient.split(',').map(e => e.trim()).filter(Boolean);
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-      pass: process.env.EMAIL_PASS || 'lxdo bbic opae gjlc'
-    }
-  });
-
-  for (const recipient of recipients) {
-    const mailOptions = {
-      from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-      to: recipient,
-      subject: 'SafeDrive Emergency Alert',
-      text: `Emergency alert received with the following details:\n${JSON.stringify(alertData, null, 2)}\n\nCoordinates:\nLatitude: ${alertData.latitude}\nLongitude: ${alertData.longitude}\n\nGoogle Maps Link: https://www.google.com/maps/search/?api=1&query=${alertData.latitude},${alertData.longitude}`
-    };
-
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.error('Error sending emergency alert email:', error);
-        emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email to ${recipient}: ${error}\n`);
-      } else {
-        console.log('Emergency alert email sent:', info.response);
-        emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent to ${recipient}: ${info.response}\n`);
-      }
-    });
-  }
+  await sendEmergencyAlertEmail(alertData, finalRecipient);
 
   res.json({ status: 'ok', message: 'Emergency alert received' });
 });
