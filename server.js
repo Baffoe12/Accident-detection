@@ -2,18 +2,20 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Sequelize, Op } = require('sequelize');
-const nodemailer = require('nodemailer');
 
-const EMAIL_USER = process.env.EMAIL_USER;
-const EMAIL_PASS = process.env.EMAIL_PASS;
-const EMAIL_ENABLED = process.env.EMAIL_ENABLED === 'true' || (!!EMAIL_USER && !!EMAIL_PASS);
-const emailTransporter = EMAIL_ENABLED ? nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASS
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const EMAIL_FROM = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com';
+const EMAIL_ENABLED = !!SENDGRID_API_KEY;
+
+let sgMail = null;
+if (EMAIL_ENABLED) {
+  try {
+    sgMail = require('@sendgrid/mail');
+    sgMail.setApiKey(SENDGRID_API_KEY);
+  } catch (err) {
+    console.error('Failed to load @sendgrid/mail:', err.message);
   }
-}) : null;
+}
 
 let lastEmailSentTime = 0;
 const EMAIL_RATE_LIMIT_MS = 60 * 60 * 1000;
@@ -458,8 +460,8 @@ function isCriticalSensorData(data) {
 }
 
 async function sendEmergencyAlertEmail(alertData, recipientCsv) {
-  if (!EMAIL_ENABLED) {
-    console.log('Email alerts disabled: SMTP credentials not configured or EMAIL_ENABLED is false');
+  if (!EMAIL_ENABLED || !sgMail) {
+    console.log('Email alerts disabled: SENDGRID_API_KEY is not configured');
     return;
   }
   if (!recipientCsv) {
@@ -477,20 +479,20 @@ async function sendEmergencyAlertEmail(alertData, recipientCsv) {
     return;
   }
 
-  const mailOptions = {
-    from: EMAIL_USER,
+  const msg = {
+    from: EMAIL_FROM,
     to: recipients,
     subject: 'SafeDrive Critical Sensor Alert',
-    text: `Critical sensor alert received:\n${JSON.stringify(alertData, null, 2)}`
+    text: `Critical sensor alert received:\n${JSON.stringify(alertData, null, 2)}`,
   };
 
   try {
-    const info = await emailTransporter.sendMail(mailOptions);
-    console.log('Emergency alert email sent:', info.response);
-    emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent to ${recipients.join(', ')}: ${info.response}\n`);
+    const info = await sgMail.send(msg);
+    console.log('Emergency alert email sent:', info[0].statusCode);
+    emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent to ${recipients.join(', ')}: ${info[0].statusCode}\n`);
   } catch (error) {
     console.error('Error sending emergency alert email:', error);
-    emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email to ${recipients.join(', ')}: ${error}\n`);
+    emergencyAlertLog.write(`[${new Date().toISOString()}] ERROR sending email to ${recipients.join(', ')}: ${error.message}\n`);
   }
 }
 
