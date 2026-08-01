@@ -80,6 +80,8 @@ app.post('/api/sensor', requireApiKey, async (req, res) => {
 
     if (data.alcohol > criticalAlcoholLevel || data.impact > criticalImpactLevel) {
       console.log('Emergency alert triggered due to critical sensor data:', data);
+      const storedAlertEmail = await getSetting('emergency_email');
+      console.log('Configured emergency email:', storedAlertEmail || 'not set');
       console.log('Email alerts disabled: Gmail SMTP is not reachable from Render');
     }
 
@@ -203,6 +205,7 @@ if (process.env.NODE_ENV === 'production' && databaseUrl) {
 // Define models
 const SensorDataModel = require('./models/SensorData')(sequelize);
 const AccidentEventModel = require('./models/AccidentEvent')(sequelize);
+const SettingModel = require('./models/Setting')(sequelize);
 
 // Sync models on startup with more detailed logging
 console.log('Starting database sync...');
@@ -394,6 +397,39 @@ app.get('/api/stats', async (req, res) => {
       max_impact: 0.9,
       total_sensor_points: 120
     });
+  }
+});
+
+async function getSetting(key, defaultValue = null) {
+  const setting = await SettingModel.findByPk(key);
+  return setting ? setting.value : defaultValue;
+}
+
+async function setSetting(key, value) {
+  await SettingModel.upsert({ key, value });
+}
+
+app.get('/api/settings/emergency-email', requireApiKey, async (req, res) => {
+  try {
+    const email = await getSetting('emergency_email', process.env.EMERGENCY_CONTACT_EMAIL || '');
+    res.json({ email });
+  } catch (err) {
+    console.error('Database error in emergency email settings endpoint:', err);
+    res.status(500).json({ error: 'Database error', details: err.message });
+  }
+});
+
+app.post('/api/settings/emergency-email', requireApiKey, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    await setSetting('emergency_email', email);
+    res.json({ status: 'ok', email });
+  } catch (err) {
+    console.error('Database error in emergency email settings endpoint:', err);
+    res.status(500).json({ error: 'Database error', details: err.message });
   }
 });
 
@@ -721,7 +757,7 @@ app.get('/api/reports/stats-excel', async (req, res) => {
 });
 
 // Emergency alert ingestion endpoint
-app.post('/api/emergency-alert', requireApiKey, (req, res) => {
+app.post('/api/emergency-alert', requireApiKey, async (req, res) => {
   const alertData = req.body;
   if (!alertData || typeof alertData !== 'object') {
     return res.status(400).json({ error: 'Invalid emergency alert data' });
@@ -730,7 +766,10 @@ app.post('/api/emergency-alert', requireApiKey, (req, res) => {
   emergencyAlertLog.write(logEntry);
   console.log(logEntry.trim());
 
-  // Send email notification using nodemailer
+  const recipientEmail = alertData.email || process.env.EMERGENCY_CONTACT_EMAIL || 'emergency_contact@example.com';
+  const storedEmail = await getSetting('emergency_email');
+  const finalRecipient = storedEmail || recipientEmail;
+
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -739,11 +778,9 @@ app.post('/api/emergency-alert', requireApiKey, (req, res) => {
     }
   });
 
-  const recipientEmail = alertData.email || process.env.EMERGENCY_CONTACT_EMAIL || 'emergency_contact@example.com';
-
   const mailOptions = {
     from: process.env.EMAIL_USER || 'boadupaakwesi4@gmail.com',
-    to: recipientEmail,
+    to: finalRecipient,
     subject: 'SafeDrive Emergency Alert',
     text: `Emergency alert received with the following details:\n${JSON.stringify(alertData, null, 2)}\n\nCoordinates:\nLatitude: ${alertData.latitude}\nLongitude: ${alertData.longitude}\n\nGoogle Maps Link: https://www.google.com/maps/search/?api=1&query=${alertData.latitude},${alertData.longitude}`
   };
