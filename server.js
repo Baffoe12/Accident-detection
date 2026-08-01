@@ -217,6 +217,15 @@ sequelize.sync({ force: false }).then(() => {
   }).catch(err => {
     console.error('Error checking tables:', err);
   });
+
+  // Seed default settings if missing
+  return SettingModel.findByPk('emergency_email').then(setting => {
+    if (!setting) {
+      const defaultEmail = process.env.EMERGENCY_CONTACT_EMAIL || 'boadupaakwesi4@gmail.com';
+      console.log(`Seeding default emergency_email setting: ${defaultEmail}`);
+      return SettingModel.create({ key: 'emergency_email', value: defaultEmail });
+    }
+  });
 }).catch(err => {
   console.error('Error syncing database tables:', err);
   // Continue running even if sync fails
