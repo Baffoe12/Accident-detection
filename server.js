@@ -16,17 +16,24 @@ const EMAIL_ENABLED = SMTP_ENABLED || !!SENDGRID_API_KEY;
 
 let transporter = null;
 if (SMTP_ENABLED) {
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
+  const transportOptions = {
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS,
     },
-  });
+  };
 
-  transporter.verify((error, success) => {
+  if (SMTP_HOST && SMTP_HOST.includes('gmail.com')) {
+    transportOptions.service = 'gmail';
+  } else {
+    transportOptions.host = SMTP_HOST;
+    transportOptions.port = SMTP_PORT;
+    transportOptions.secure = SMTP_SECURE;
+  }
+
+  transporter = nodemailer.createTransport(transportOptions);
+
+  transporter.verify((error) => {
     if (error) {
       console.error('Failed to verify SMTP transporter:', error.message);
       transporter = null;
@@ -516,10 +523,17 @@ async function sendEmergencyAlertEmail(alertData, recipientCsv) {
   };
 
   try {
+    const now = Date.now();
+    if (now - lastEmailSentTime < EMAIL_RATE_LIMIT_MS) {
+      console.log('Email rate limit exceeded, skipping emergency alert email');
+      return;
+    }
+
     if (SMTP_ENABLED && transporter) {
       const info = await transporter.sendMail(msg);
       console.log('Emergency alert email sent via SMTP:', info.messageId || info.response);
       emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent via SMTP to ${recipients.join(', ')}: ${info.messageId || info.response}\n`);
+      lastEmailSentTime = now;
       return;
     }
 
@@ -527,6 +541,7 @@ async function sendEmergencyAlertEmail(alertData, recipientCsv) {
       const info = await sgMail.send(msg);
       console.log('Emergency alert email sent via SendGrid:', info[0].statusCode);
       emergencyAlertLog.write(`[${new Date().toISOString()}] Email sent via SendGrid to ${recipients.join(', ')}: ${info[0].statusCode}\n`);
+      lastEmailSentTime = now;
       return;
     }
 
