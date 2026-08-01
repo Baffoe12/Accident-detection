@@ -540,6 +540,9 @@ async function sendEmergencyAlertEmail(alertData, recipientCsv) {
 app.get('/api/settings/emergency-email', requireApiKey, async (req, res) => {
   try {
     const email = await getSetting('emergency_email', process.env.EMERGENCY_CONTACT_EMAIL || '');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.json({ email });
   } catch (err) {
     console.error('Database error in emergency email settings endpoint:', err);
@@ -569,10 +572,10 @@ app.post('/api/settings/emergency-email', requireApiKey, async (req, res) => {
 app.get('/api/sensor', async (req, res) => {
   try {
     // Try to get latest sensor data from database
-    const latest = await SensorDataModel.findOne({ order: [['createdAt', 'DESC']] });
+    const latest = await SensorDataModel.findOne({ order: [['timestamp', 'DESC']] });
     if (latest) {
       const latestJson = latest.toJSON();
-      console.log(`Latest sensor data createdAt: ${latestJson.createdAt}`);
+      console.log(`Latest sensor data createdAt: ${latestJson.createdAt}, timestamp: ${latestJson.timestamp}`);
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
